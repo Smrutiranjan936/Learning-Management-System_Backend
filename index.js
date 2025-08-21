@@ -10,11 +10,12 @@ app.use(express.json());
 app.use('/subjects', express.static(path.join(__dirname, 'subjects')));
 app.use('/chapters/thumbnails', express.static(path.join(__dirname,'chapters/thumbnails')));
 app.use('/chapters/videos', express.static(path.join(__dirname,'chapters/videos')));
+app.use('/profiles', express.static(path.join(__dirname,'profiles')));
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: ['http://localhost:5173','https://learning-management-system-frontend-he5qfqkqt.vercel.app'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }))
-mongoose.connect('mongodb+srv://soumyaranjan65432:kathakhunta90@cluster0.grybuzc.mongodb.net/lms')
+mongoose.connect('mongodb+srv://msmrutiranjan35:Mallick123@cluster0.ixm9mkf.mongodb.net/nikhil')
 .then(()=>{
     console.log('MongoDb Connected Successfully')
 }).catch(err=>{

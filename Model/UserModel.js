@@ -40,7 +40,13 @@ const UserSchema=new mongoose.Schema({
         type:String,
         required:true,
         default:'inactive'
+    },
+    profilePic: { 
+        type: String,
+        required: true,
+        default: null
     }
+
 })
 const UserModel=mongoose.model('user',UserSchema);
 module.exports=UserModel;

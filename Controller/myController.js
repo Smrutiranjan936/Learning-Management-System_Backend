@@ -2,15 +2,21 @@ const UserModel = require("../Model/UserModel");
 const CategoryModel = require("../Model/AddCategoryModel");
 const SubjectModel = require('../Model/SubjectModel');
 const ChapterModel = require('../Model/ChapterModel');
+const Payment = require('../Model/Payment');
 const crypt = require("bcrypt");
-exports.register = async (req, res) => {
-  const body = req.body;
 
-  const user = await UserModel.findOne({ email: body.email });
-  console.log(user);
-  if (user) {
-    return res.json({ message: "User already exists" });
-  } else {
+// Register Controller
+exports.register = async (req, res) => {
+  try {
+    const body = req.body;
+
+    // Check if user already exists
+    const existingUser = await UserModel.findOne({ email: body.email });
+    if (existingUser) {
+      return res.json({ message: "User already exists" });
+    }
+
+    // Validate required fields
     if (
       !body.name ||
       !body.email ||
@@ -21,25 +27,38 @@ exports.register = async (req, res) => {
       !body.address
     ) {
       return res.json({ message: "All Fields are Required" });
-    } else {
-      const password = await crypt.hash(body.password, 10);
-      const user = await UserModel.create({
-        name: body.name,
-        email: body.email,
-        password: password,
-        dob: body.dob,
-        gender: body.gender,
-        address: body.address,
-        phone: body.phone,
-      });
-      if (user) {
-        return res.json({ message: "User Created Successfully" });
-      } else {
-        return res.json({ message: "Something Went Wrong" });
-      }
     }
+
+    // ✅ Save only the unique filename (multer generated one)
+    let profilePic = req.file ? req.file.filename : null;
+
+    // Hash password
+    const hashedPassword = await crypt.hash(body.password, 10);
+
+    // Create new user
+    const newUser = await UserModel.create({
+      name: body.name,
+      email: body.email,
+      password: hashedPassword,
+      dob: body.dob,
+      gender: body.gender,
+      address: body.address,
+      phone: body.phone,
+      profilePic, // ✅ only unique name gets stored
+    });
+
+    if (newUser) {
+      return res.json({ message: "User Created Successfully" });
+    } else {
+      return res.json({ message: "Something Went Wrong" });
+    }
+  } catch (err) {
+    console.error("Register Error:", err);
+    return res.status(500).json({ message: "Server Error" });
   }
 };
+
+
 
 exports.login = async (req, res) => {
   const body = req.body;
@@ -60,6 +79,7 @@ exports.login = async (req, res) => {
           name: user.name,
           id: user._id,
           email: user.email,
+          profilePic: user.profilePic
         });
       }
     }
@@ -214,8 +234,174 @@ exports.addChapter = async (req, res) => {
   }
 }
 
-exports.fetchChapter=async (req,res)=>{
-  const id=req.params.id;
-  const chapters=await ChapterModel.find({SubjectId:id});
+exports.fetchChapter = async (req, res) => {
+  const id = req.params.id;
+  const chapters = await ChapterModel.find({ SubjectId: id });
   return res.json(chapters);
 }
+exports.deleteChapter = async (req, res) => {
+  const id = req.params.id;
+  const deleted = await ChapterModel.findByIdAndDelete(id);
+  if (!deleted) {
+    return res.status(404).json({ message: "Chapter not found" });
+  }
+  return res.json({ message: "Chapter deleted" });
+};
+
+exports.addPayment = async (req, res) => {
+  try {
+    const { userId, subjectId, price, utrNumber } = req.body;
+    const payment = new Payment({
+      userId,
+      subjectId,
+      price,
+      utrNumber
+    });
+    await payment.save();
+    res.json({ success: true, message: 'Payment submitted for verification', payment });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+}
+
+exports.showVideos = async (req, res) => {
+  const { subjectId, userId } = req.params;
+  const payment = await Payment.findOne({
+    userId,
+    subjectId
+  });
+  if (!payment) {
+    return res.json({ message: 'Access denied. Please purchase the subject.' });
+  }
+  if (payment.status !== 'verified') {
+    return res.json({ message: 'Payment not verified yet.' });
+  }
+  if (payment.status === 'rejected') {
+    return res.json({ message: 'Payment rejected. Please contact support.' });
+  }
+  if (payment.status === 'pending') {
+    return res.json({ message: 'Payment is still pending verification.' });
+  }
+  if (payment.status === 'verified') {
+    return res.json({ message: 'verified' });
+  }
+}
+
+exports.fetchPurchaseVideo = async (req, res) => {
+  const { subjectId, userId } = req.params;
+  const payment = await Payment.findOne({
+    userId,
+    subjectId
+  });
+  if (!payment) {
+    return res.json({ message: 'notpurchased' });
+  }
+  if (payment.status === 'pending') {
+    return res.json({ message: 'pending' });
+  }
+  if (payment.status === 'verified') {
+    return res.json({ message: 'verified' });
+  }
+}
+
+exports.approvePayment = async (req, res) => {
+  try {
+    const payments = await Payment.find({ status: 'pending' })
+      .populate('subjectId', 'subjectName') // matches SubjectModel fields
+      .populate('userId', 'name'); // matches UserModel fields
+
+    if (payments.length === 0) {
+      return res.json({ message: 'No pending payments to approve.' });
+    }
+
+    return res.json(payments);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+};
+
+exports.approvePaymentStatus = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { status } = req.body;
+
+    if (!['verified', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const payment = await Payment.findByIdAndUpdate(id, { status }, { new: true })
+      .populate('subjectId', 'subjectName')
+      .populate('userId', 'name');
+
+    if (!payment) {
+      return res.status(404).json({ message: 'Payment not found' });
+    }
+
+    return res.json({ message: `Payment ${status} successfully`, payment });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+};
+
+exports.watchVideo = async (req, res) => {
+  const { subjectId } = req.params;
+  try {
+    const chapters = await ChapterModel.find({ SubjectId: subjectId });
+    if (chapters.length === 0) {
+      return res.status(404).json({ message: 'No chapters found for this subject.' });
+    }
+    return res.json(chapters);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while fetching chapters.' });
+  }
+};
+exports.purchasedVideos = async (req, res) => {
+  const userId = req.params.userId;
+  try {
+    const payments = await Payment.find({ userId, status: 'verified' })
+      .populate('subjectId', 'subjectName thumbnail price'); // Populate subject details
+
+    if (payments.length === 0) {
+      return res.json({ message: 'No purchased videos found.' });
+    }
+
+    return res.json(payments);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error while fetching purchased videos.' });
+  }
+};
+
+
+
+// const SubjectModel = require("../models/SubjectModel");
+
+// Delete subject by ID
+exports.deleteSubject = async (req, res) => {
+  try {
+    const subjectId = req.params.id;
+    const deleted = await SubjectModel.findByIdAndDelete(subjectId);
+
+    if (!deleted) return res.status(404).json({ message: "Subject not found for deletion" });
+
+    return res.json({ message: "Subject deleted successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete subject", error });
+  }
+};
+
+// Update subject
+exports.updateSubject = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updateData = req.body;
+    await SubjectModel.findByIdAndUpdate(id, updateData, { new: true });
+    return res.json({ message: "Subject Updated Successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update subject", error });
+  }
+};
