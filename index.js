@@ -12,7 +12,7 @@ app.use('/chapters/thumbnails', express.static(path.join(__dirname,'chapters/thu
 app.use('/chapters/videos', express.static(path.join(__dirname,'chapters/videos')));
 app.use('/profiles', express.static(path.join(__dirname,'profiles')));
 app.use(cors({
-    origin: ['http://localhost:5173','https://learning-management-system-frontend-he5qfqkqt.vercel.app'],
+    origin: 'https://learning-management-system-frontend-gamma.vercel.app/',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }))
 mongoose.connect('mongodb+srv://msmrutiranjan35:Mallick123@cluster0.ixm9mkf.mongodb.net/nikhil')
